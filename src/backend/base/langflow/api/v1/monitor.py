@@ -40,7 +40,25 @@ async def delete_vertex_builds(flow_id: Annotated[UUID, Query()], session: DbSes
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/messages")
+@router.get("/messages/sessions", dependencies=[Depends(get_current_active_user)])
+async def get_message_sessions(
+    session: DbSession,
+    flow_id: Annotated[UUID | None, Query()] = None,
+) -> list[str]:
+    try:
+        stmt = select(MessageTable.session_id).distinct()
+        stmt = stmt.where(col(MessageTable.session_id).isnot(None))
+
+        if flow_id:
+            stmt = stmt.where(MessageTable.flow_id == flow_id)
+
+        session_ids = await session.exec(stmt)
+        return list(session_ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/messages", dependencies=[Depends(get_current_active_user)])
 async def get_messages(
     session: DbSession,
     flow_id: Annotated[UUID | None, Query()] = None,
@@ -54,7 +72,10 @@ async def get_messages(
         if flow_id:
             stmt = stmt.where(MessageTable.flow_id == flow_id)
         if session_id:
-            stmt = stmt.where(MessageTable.session_id == session_id)
+            from urllib.parse import unquote
+
+            decoded_session_id = unquote(session_id)
+            stmt = stmt.where(MessageTable.session_id == decoded_session_id)
         if sender:
             stmt = stmt.where(MessageTable.sender == sender)
         if sender_name:
@@ -141,7 +162,7 @@ async def update_session_id(
     return message_responses
 
 
-@router.delete("/messages/session/{session_id}", status_code=204)
+@router.delete("/messages/session/{session_id}", status_code=204, dependencies=[Depends(get_current_active_user)])
 async def delete_messages_session(
     session_id: str,
     session: DbSession,
@@ -159,7 +180,7 @@ async def delete_messages_session(
     return {"message": "Messages deleted successfully"}
 
 
-@router.get("/transactions")
+@router.get("/transactions", dependencies=[Depends(get_current_active_user)])
 async def get_transactions(
     flow_id: Annotated[UUID, Query()],
     session: DbSession,
